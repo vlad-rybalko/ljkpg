@@ -9,6 +9,9 @@ const state = {
   quality: 0.82,
 };
 
+// Кол-во активных партий обработки (для корректного индикатора)
+let activeBatches = 0;
+
 const app = document.getElementById('app');
 app.innerHTML = `
   <header>
@@ -103,6 +106,7 @@ clearButton.addEventListener('click', () => {
 });
 
 async function handleFiles(files) {
+  activeBatches += 1;
   toggleProgress(true, `Обработка ${files.length} ${decline(files.length, 'файл', 'файла', 'файлов')}…`);
 
   for (const file of files) {
@@ -119,7 +123,10 @@ async function handleFiles(files) {
     }
   }
 
-  toggleProgress(false);
+  activeBatches = Math.max(0, activeBatches - 1);
+  if (activeBatches === 0) {
+    toggleProgress(false);
+  }
   clearButton.hidden = state.items.length === 0;
 }
 
@@ -127,6 +134,9 @@ function toggleProgress(show, message = '') {
   progress.hidden = !show;
   if (message) {
     progressText.textContent = message;
+  }
+  if (!show) {
+    progressText.textContent = 'Обработка…';
   }
 }
 
@@ -202,7 +212,9 @@ function createVariantRow(variant) {
 
 async function processImage(file, quality) {
   const imageBitmap = await loadImageBitmap(file);
-  const previewUrl = await fileToDataUrl(file);
+  const previewUrl = isHeicFile(file)
+    ? await imageBitmapToDataUrl(imageBitmap, 'image/webp', 0.9)
+    : await fileToDataUrl(file);
   const variants = [];
 
   for (const preset of TARGET_PRESETS) {
@@ -268,6 +280,18 @@ async function renderVariant(imageBitmap, targetWidth, quality) {
 }
 
 async function loadImageBitmap(file) {
+  // HEIC/HEIF: конвертация в поддерживаемый формат на клиенте
+  if (isHeicFile(file)) {
+    try {
+      const heic2any = (await import('https://esm.sh/heic2any@0.0.4')).default;
+      let converted = await heic2any({ blob: file, toType: 'image/png' });
+      if (Array.isArray(converted)) converted = converted[0];
+      return await createImageBitmap(converted, { imageOrientation: 'from-image' });
+    } catch (error) {
+      console.warn('HEIC конвертация не удалась', error);
+      throw new Error('Не удалось обработать HEIC/HEIF. Попробуйте другой файл или другой браузер.');
+    }
+  }
   if ('createImageBitmap' in window) {
     try {
       return await createImageBitmap(file, { imageOrientation: 'from-image' });
@@ -297,6 +321,20 @@ function fileToDataUrl(file) {
     reader.onerror = () => reject(new Error('Ошибка чтения файла.'));
     reader.readAsDataURL(file);
   });
+}
+
+function isHeicFile(file) {
+  return /heic|heif/i.test(file.type || '') || /\.(heic|heif)$/i.test(file.name || '');
+}
+
+async function imageBitmapToDataUrl(imageBitmap, type = 'image/webp', quality = 0.92) {
+  const canvas = document.createElement('canvas');
+  canvas.width = imageBitmap.width || 1;
+  canvas.height = imageBitmap.height || 1;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('Не удалось создать контекст рисования.');
+  ctx.drawImage(imageBitmap, 0, 0);
+  return canvas.toDataURL(type, quality);
 }
 
 function downloadBlob(blob, fileName) {
