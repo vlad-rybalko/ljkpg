@@ -108,26 +108,27 @@ clearButton.addEventListener('click', () => {
 async function handleFiles(files) {
   activeBatches += 1;
   toggleProgress(true, `Обработка ${files.length} ${decline(files.length, 'файл', 'файла', 'файлов')}…`);
+  try {
+    for (const file of files) {
+      const card = createPendingCard(file);
+      results.prepend(card.element);
+      state.items.unshift(card);
 
-  for (const file of files) {
-    const card = createPendingCard(file);
-    results.prepend(card.element);
-    state.items.unshift(card);
-
-    try {
-      const processed = await processImage(file, state.quality);
-      card.resolve(processed);
-    } catch (error) {
-      console.error(error);
-      card.reject(error);
+      try {
+        const processed = await processImage(file, state.quality);
+        card.resolve(processed);
+      } catch (error) {
+        console.error(error);
+        card.reject(error);
+      }
     }
+  } finally {
+    activeBatches = Math.max(0, activeBatches - 1);
+    if (activeBatches === 0) {
+      toggleProgress(false);
+    }
+    clearButton.hidden = state.items.length === 0;
   }
-
-  activeBatches = Math.max(0, activeBatches - 1);
-  if (activeBatches === 0) {
-    toggleProgress(false);
-  }
-  clearButton.hidden = state.items.length === 0;
 }
 
 function toggleProgress(show, message = '') {
