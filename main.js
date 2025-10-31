@@ -36,10 +36,6 @@ app.innerHTML = `
         <input type="range" id="quality" min="0.4" max="1" step="0.01" value="${state.quality}" />
         <span id="qualityValue">${Math.round(state.quality * 100)}%</span>
       </div>
-      <div id="progress" class="progress" hidden>
-        <span class="spinner" aria-hidden="true"></span>
-        <span id="progressText">Обработка…</span>
-      </div>
     </div>
   </section>
   <section id="results" class="results" aria-live="polite"></section>
@@ -55,8 +51,6 @@ const results = document.getElementById('results');
 const qualityInput = document.getElementById('quality');
 const qualityValue = document.getElementById('qualityValue');
 const clearButton = document.getElementById('clear');
-const progress = document.getElementById('progress');
-const progressText = document.getElementById('progressText');
 
 pickFiles.addEventListener('click', () => fileInput.click());
 
@@ -132,12 +126,36 @@ async function handleFiles(files) {
 }
 
 function toggleProgress(show, message = '') {
-  progress.hidden = !show;
-  if (message) {
-    progressText.textContent = message;
+  if (show) {
+    showProgress(message || 'Обработка…');
+  } else {
+    hideProgress();
   }
-  if (!show) {
-    progressText.textContent = 'Обработка…';
+}
+
+function showProgress(message) {
+  let progress = document.getElementById('progress');
+  if (!progress) {
+    const controls = document.querySelector('.controls');
+    progress = document.createElement('div');
+    progress.id = 'progress';
+    progress.className = 'progress';
+    const spinner = document.createElement('span');
+    spinner.className = 'spinner';
+    spinner.setAttribute('aria-hidden', 'true');
+    const text = document.createElement('span');
+    text.id = 'progressText';
+    progress.append(spinner, text);
+    controls?.appendChild(progress);
+  }
+  const progressText = progress.querySelector('#progressText');
+  if (progressText) progressText.textContent = message || 'Обработка…';
+}
+
+function hideProgress() {
+  const progress = document.getElementById('progress');
+  if (progress && progress.parentElement) {
+    progress.parentElement.removeChild(progress);
   }
 }
 
@@ -187,6 +205,18 @@ function createPreview(url) {
   img.src = url;
   img.alt = 'Превью обработанного изображения';
   wrapper.appendChild(img);
+  // Открытие полноразмерного превью в модалке по клику/клавише
+  wrapper.tabIndex = 0;
+  wrapper.setAttribute('role', 'button');
+  wrapper.setAttribute('aria-label', 'Открыть превью');
+  const open = () => openImageModal(url);
+  wrapper.addEventListener('click', open);
+  wrapper.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      open();
+    }
+  });
   return wrapper;
 }
 
@@ -336,6 +366,53 @@ async function imageBitmapToDataUrl(imageBitmap, type = 'image/webp', quality = 
   if (!ctx) throw new Error('Не удалось создать контекст рисования.');
   ctx.drawImage(imageBitmap, 0, 0);
   return canvas.toDataURL(type, quality);
+}
+
+// Модальное окно для просмотра изображений
+function ensureImageModal() {
+  let modal = document.getElementById('imageModal');
+  if (modal) return modal;
+
+  modal = document.createElement('div');
+  modal.id = 'imageModal';
+  modal.className = 'modal';
+  modal.innerHTML = `
+    <div class="modal-backdrop" data-close="true"></div>
+    <div class="modal-dialog" role="dialog" aria-modal="true" aria-label="Просмотр изображения">
+      <button type="button" class="modal-close" aria-label="Закрыть">×</button>
+      <img class="modal-image" alt="Полноразмерное изображение" />
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+
+  // Закрытие по клику на фон/кнопку/ESC
+  modal.addEventListener('click', (e) => {
+    const target = e.target;
+    if (target instanceof HTMLElement && (target.dataset.close === 'true' || target.classList.contains('modal-close'))) {
+      closeImageModal();
+    }
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !modal.classList.contains('hidden') && modal.classList.contains('open')) {
+      closeImageModal();
+    }
+  });
+
+  return modal;
+}
+
+function openImageModal(url) {
+  const modal = ensureImageModal();
+  const img = modal.querySelector('.modal-image');
+  if (img) img.src = url;
+  modal.classList.add('open');
+}
+
+function closeImageModal() {
+  const modal = document.getElementById('imageModal');
+  if (!modal) return;
+  modal.classList.remove('open');
 }
 
 function downloadBlob(blob, fileName) {
