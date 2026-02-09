@@ -1,251 +1,311 @@
-const SALT = 'phrase-lock/v1';
+const { createApp, ref, computed } = Vue;
 
-const app = document.getElementById('app');
-app.innerHTML = `
-  <header>
-    <p class="eyebrow">Client-side Phrase Encryptor/Decryptor</p>
-    <h1>Клиентский шифратор фраз</h1>
-    <p class="subtitle">
-      Все операции выполняются локально в браузере. Можно сохранить страницу и работать оффлайн.
-    </p>
-    <div class="warning">
-      <strong>Важно:</strong> не храните зашифрованные данные в общедоступных местах и используйте сильные пароли.
-    </div>
-  </header>
+const widgetCatalog = [
+  {
+    type: 'hero',
+    label: 'Hero (баннер)',
+    description: 'Крупный баннер с каруселью, высота фиксирована.'
+  },
+  {
+    type: 'plant',
+    label: 'Информация о растении',
+    description: 'Карточка с особенностями, уходом и сезоном.'
+  },
+  {
+    type: 'text',
+    label: 'Текстовый блок',
+    description: 'Описание или длинный текст.'
+  },
+  {
+    type: 'image',
+    label: 'Изображение',
+    description: 'Картинка с подписью и настраиваемой высотой.'
+  }
+];
 
-  <main class="panel">
-    <div class="tabs" role="tablist" aria-label="Режимы">
-      <button type="button" class="tab active" role="tab" aria-selected="true" data-mode="encrypt">
-        Шифровать
-      </button>
-      <button type="button" class="tab" role="tab" aria-selected="false" data-mode="decrypt">
-        Расшифровать
-      </button>
-    </div>
-
-    <form id="cryptoForm" class="form" novalidate>
-      <div class="field">
-        <label for="inputText" id="inputLabel">Фраза для шифрования</label>
-        <textarea
-          id="inputText"
-          rows="5"
-          placeholder="Введите seed phrase или любую текстовую фразу"
-          required
-        ></textarea>
-        <p class="hint">Поддерживаются фразы до ~1000 символов.</p>
+const HeroWidget = {
+  props: ['title', 'subtitle', 'slides', 'showArrows', 'showPagination'],
+  data() {
+    return {
+      activeIndex: 0
+    };
+  },
+  methods: {
+    prev() {
+      this.activeIndex = (this.activeIndex - 1 + this.slides.length) % this.slides.length;
+    },
+    next() {
+      this.activeIndex = (this.activeIndex + 1) % this.slides.length;
+    },
+    goTo(index) {
+      this.activeIndex = index;
+    }
+  },
+  template: `
+    <section class="widget widget-hero">
+      <div class="hero">
+        <div class="hero__content">
+          <h3 class="hero__title">{{ title }}</h3>
+          <p class="hero__subtitle">{{ subtitle }}</p>
+        </div>
+        <div class="hero__carousel">
+          <div class="hero__slides">
+            <div
+              v-for="(slide, index) in slides"
+              :key="slide.caption"
+              class="hero__slide"
+              :class="{ 'hero__slide--active': index === activeIndex }"
+            >
+              <img :src="slide.image" :alt="slide.caption" />
+              <span class="hero__caption">{{ slide.caption }}</span>
+            </div>
+          </div>
+          <button v-if="showArrows" class="hero__arrow hero__arrow--left" @click="prev">
+            ←
+          </button>
+          <button v-if="showArrows" class="hero__arrow hero__arrow--right" @click="next">
+            →
+          </button>
+          <div v-if="showPagination" class="hero__pagination">
+            <button
+              v-for="(slide, index) in slides"
+              :key="slide.caption + index"
+              :class="{ active: index === activeIndex }"
+              @click="goTo(index)"
+            ></button>
+          </div>
+        </div>
       </div>
-
-      <div class="field">
-        <label for="password">Пароль</label>
-        <input id="password" type="password" minlength="8" placeholder="Минимум 8 символов" required />
-        <p class="hint">Пароль не сохраняется и нигде не отправляется.</p>
-      </div>
-
-      <div class="field decrypt-only" hidden>
-        <label class="checkbox">
-          <input type="checkbox" id="dateLockToggle" />
-          Ограничить расшифровку до даты
-        </label>
-        <input id="unlockDate" type="date" disabled />
-        <p class="hint">Если дата в будущем, расшифровка будет заблокирована.</p>
-      </div>
-
-      <div id="errorBox" class="message error" role="alert" hidden></div>
-
-      <div class="actions">
-        <button class="primary" type="submit" id="processButton">Выполнить</button>
-        <button class="ghost" type="button" id="clearButton">Очистить</button>
-      </div>
-    </form>
-
-    <section class="result" aria-live="polite">
-      <div class="result-header">
-        <h2 id="resultTitle">Зашифрованный код</h2>
-        <button class="ghost" type="button" id="copyButton">Скопировать</button>
-      </div>
-      <textarea id="resultText" rows="4" readonly placeholder="Результат появится здесь"></textarea>
-      <p class="hint" id="saltHint">AES-256 + PBKDF2, фиксированная соль для пароля: <code>${SALT}</code>.</p>
     </section>
-  </main>
-
-  <footer>
-    <h2>Краткая инструкция</h2>
-    <ol>
-      <li>Выберите режим: «Шифровать» или «Расшифровать».</li>
-      <li>Введите фразу и пароль (не менее 8 символов).</li>
-      <li>Нажмите «Выполнить» и скопируйте результат.</li>
-    </ol>
-  </footer>
-`;
-
-const modeButtons = Array.from(document.querySelectorAll('[data-mode]'));
-const inputLabel = document.getElementById('inputLabel');
-const inputText = document.getElementById('inputText');
-const password = document.getElementById('password');
-const resultTitle = document.getElementById('resultTitle');
-const resultText = document.getElementById('resultText');
-const form = document.getElementById('cryptoForm');
-const errorBox = document.getElementById('errorBox');
-const processButton = document.getElementById('processButton');
-const copyButton = document.getElementById('copyButton');
-const clearButton = document.getElementById('clearButton');
-const decryptOnly = document.querySelector('.decrypt-only');
-const dateLockToggle = document.getElementById('dateLockToggle');
-const unlockDate = document.getElementById('unlockDate');
-
-const state = {
-  mode: 'encrypt',
+  `
 };
 
-modeButtons.forEach((button) => {
-  button.addEventListener('click', () => setMode(button.dataset.mode));
+const PlantWidget = {
+  props: ['name', 'latin', 'description', 'care', 'season'],
+  template: `
+    <section class="widget widget-plant">
+      <div class="plant">
+        <div>
+          <p class="plant__eyebrow">{{ latin }}</p>
+          <h3>{{ name }}</h3>
+          <p class="plant__description">{{ description }}</p>
+        </div>
+        <div class="plant__details">
+          <div>
+            <strong>Уход</strong>
+            <p>{{ care }}</p>
+          </div>
+          <div>
+            <strong>Сезон</strong>
+            <p>{{ season }}</p>
+          </div>
+        </div>
+      </div>
+    </section>
+  `
+};
+
+const TextWidget = {
+  props: ['title', 'body'],
+  template: `
+    <section class="widget widget-text">
+      <h3>{{ title }}</h3>
+      <p>{{ body }}</p>
+    </section>
+  `
+};
+
+const ImageWidget = {
+  props: ['src', 'caption', 'height'],
+  template: `
+    <figure class="widget widget-image">
+      <img :src="src" :alt="caption" :style="{ height: height + 'px' }" />
+      <figcaption>Высота: {{ height }}px · {{ caption }}</figcaption>
+    </figure>
+  `
+};
+
+const widgetComponents = {
+  hero: 'HeroWidget',
+  plant: 'PlantWidget',
+  text: 'TextWidget',
+  image: 'ImageWidget'
+};
+
+let nextId = 1;
+const uid = () => nextId++;
+
+const defaultWidgets = {
+  hero: {
+    title: 'Главный баннер',
+    subtitle: 'Hero-блок с фиксированной высотой и каруселью.',
+    slides: [
+      {
+        image: 'https://images.unsplash.com/photo-1501004318641-b39e6451bec6?auto=format&fit=crop&w=1200&q=80',
+        caption: 'Свежая коллекция растений'
+      },
+      {
+        image: 'https://images.unsplash.com/photo-1466781783364-36c955e42a7f?auto=format&fit=crop&w=1200&q=80',
+        caption: 'Уголок зелени в интерьере'
+      },
+      {
+        image: 'https://images.unsplash.com/photo-1446071103084-c257b5f70672?auto=format&fit=crop&w=1200&q=80',
+        caption: 'Мини-сад для рабочей зоны'
+      }
+    ],
+    showArrows: true,
+    showPagination: true
+  },
+  plant: {
+    name: 'Монстера Деликатесная',
+    latin: 'Monstera deliciosa',
+    description: 'Неприхотливое растение с крупными рассеченными листьями.',
+    care: 'Яркий рассеянный свет, полив 1-2 раза в неделю.',
+    season: 'Активный рост — весна и лето.'
+  },
+  text: {
+    title: 'Описание раздела',
+    body: 'Добавьте сюда подробный текст о компании, продукте или услуге. Блок адаптируется по высоте под контент.'
+  },
+  image: {
+    src: 'https://images.unsplash.com/photo-1501004318641-b39e6451bec6?auto=format&fit=crop&w=1200&q=80',
+    caption: 'Имиджевое фото для секции.',
+    height: 220
+  }
+};
+
+const createWidget = (type) => ({
+  id: uid(),
+  type,
+  component: widgetComponents[type],
+  props: { ...defaultWidgets[type] }
 });
 
-dateLockToggle.addEventListener('change', () => {
-  unlockDate.disabled = !dateLockToggle.checked;
+const createColumn = (order) => ({
+  id: uid(),
+  order,
+  span: 6,
+  selectedWidget: 'hero',
+  widgets: []
 });
 
-form.addEventListener('submit', async (event) => {
-  event.preventDefault();
-  clearMessage();
-  const text = inputText.value.trim();
-  const pass = password.value;
+const createRow = (order) => ({
+  id: uid(),
+  order,
+  columns: []
+});
 
-  if (!text) {
-    showError('Введите фразу или зашифрованный код.');
-    return;
-  }
+createApp({
+  setup() {
+    const rows = ref([]);
+    const spanOptions = Array.from({ length: 12 }, (_, i) => i + 1);
 
-  if (!pass || pass.length < 8) {
-    showError('Пароль должен содержать минимум 8 символов.');
-    return;
-  }
+    const addRow = () => {
+      const row = createRow(rows.value.length + 1);
+      row.columns.push(createColumn(1));
+      rows.value.push(row);
+    };
 
-  processButton.disabled = true;
+    const removeRow = (rowId) => {
+      rows.value = rows.value.filter((row) => row.id !== rowId);
+      rows.value.forEach((row, index) => {
+        row.order = index + 1;
+      });
+    };
 
-  try {
-    if (state.mode === 'encrypt') {
-      const cipher = await CryptoJS.AES.encrypt(text, buildPassphrase(pass));
-      resultText.value = cipher;
-      return;
-    }
+    const addColumn = (row) => {
+      row.columns.push(createColumn(row.columns.length + 1));
+    };
 
-    if (dateLockToggle.checked && unlockDate.value) {
-      const selected = new Date(unlockDate.value);
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      if (selected > today) {
-        showError(`Расшифровка заблокирована до ${formatDate(selected)}.`);
+    const removeColumn = (row, columnId) => {
+      row.columns = row.columns.filter((column) => column.id !== columnId);
+      row.columns.forEach((column, index) => {
+        column.order = index + 1;
+      });
+    };
+
+    const addWidget = (column) => {
+      const type = column.selectedWidget;
+      if (!type) {
         return;
       }
-    }
+      column.widgets.push(createWidget(type));
+    };
 
-    const decrypted = await CryptoJS.AES.decrypt(text, buildPassphrase(pass));
-    if (!decrypted) {
-      showError('Неверный пароль или поврежденный код.');
-      return;
-    }
-    resultText.value = decrypted;
-  } catch (error) {
-    showError('Не удалось расшифровать данные. Проверьте ввод.');
-  } finally {
-    processButton.disabled = false;
+    const removeWidget = (column, widgetId) => {
+      column.widgets = column.widgets.filter((widget) => widget.id !== widgetId);
+    };
+
+    const columnStyle = (column) => ({
+      gridColumn: `span ${column.span}`
+    });
+
+    const seedLayout = () => {
+      const firstRow = createRow(1);
+      const heroColumn = createColumn(1);
+      heroColumn.span = 12;
+      heroColumn.widgets.push(createWidget('hero'));
+      const plantColumn = createColumn(2);
+      plantColumn.span = 4;
+      plantColumn.widgets.push(createWidget('plant'));
+      const textColumn = createColumn(3);
+      textColumn.span = 8;
+      textColumn.widgets.push(createWidget('text'));
+      firstRow.columns.push(heroColumn, plantColumn, textColumn);
+
+      const secondRow = createRow(2);
+      const imageColumn = createColumn(1);
+      imageColumn.span = 6;
+      imageColumn.widgets.push(createWidget('image'));
+      const textColumnTwo = createColumn(2);
+      textColumnTwo.span = 6;
+      textColumnTwo.widgets.push(createWidget('text'));
+      secondRow.columns.push(imageColumn, textColumnTwo);
+
+      rows.value = [firstRow, secondRow];
+    };
+
+    const resetLayout = () => {
+      rows.value = [];
+      seedLayout();
+    };
+
+    const jsonOutput = computed(() => {
+      const payload = {
+        columnsGrid: 12,
+        rows: rows.value.map((row) => ({
+          columns: row.columns.map((column) => ({
+            span: column.span,
+            widgets: column.widgets.map((widget) => ({
+              type: widget.type,
+              props: widget.props
+            }))
+          }))
+        }))
+      };
+      return JSON.stringify(payload, null, 2);
+    });
+
+    seedLayout();
+
+    return {
+      rows,
+      widgetCatalog,
+      spanOptions,
+      addRow,
+      removeRow,
+      addColumn,
+      removeColumn,
+      addWidget,
+      removeWidget,
+      resetLayout,
+      columnStyle,
+      jsonOutput
+    };
   }
-});
-
-copyButton.addEventListener('click', async () => {
-  clearMessage();
-  const value = resultText.value.trim();
-  if (!value) {
-    showError('Нет данных для копирования.');
-    return;
-  }
-  try {
-    await navigator.clipboard.writeText(value);
-    showSuccess('Скопировано в буфер обмена.');
-  } catch (error) {
-    const ok = fallbackCopy(resultText);
-    if (ok) {
-      showSuccess('Скопировано в буфер обмена.');
-    } else {
-      showError('Не удалось скопировать. Выделите текст вручную.');
-    }
-  }
-});
-
-clearButton.addEventListener('click', () => {
-  inputText.value = '';
-  password.value = '';
-  resultText.value = '';
-  dateLockToggle.checked = false;
-  unlockDate.value = '';
-  unlockDate.disabled = true;
-  clearMessage();
-});
-
-function setMode(mode) {
-  if (mode !== 'encrypt' && mode !== 'decrypt') return;
-  state.mode = mode;
-
-  modeButtons.forEach((button) => {
-    const isActive = button.dataset.mode === mode;
-    button.classList.toggle('active', isActive);
-    button.setAttribute('aria-selected', String(isActive));
-  });
-
-  if (mode === 'encrypt') {
-    inputLabel.textContent = 'Фраза для шифрования';
-    inputText.placeholder = 'Введите seed phrase или любую текстовую фразу';
-    processButton.textContent = 'Шифровать';
-    resultTitle.textContent = 'Зашифрованный код';
-    decryptOnly.hidden = true;
-  } else {
-    inputLabel.textContent = 'Зашифрованный код';
-    inputText.placeholder = 'Вставьте зашифрованный код';
-    processButton.textContent = 'Расшифровать';
-    resultTitle.textContent = 'Расшифрованная фраза';
-    decryptOnly.hidden = false;
-  }
-}
-
-function buildPassphrase(passwordValue) {
-  return `${passwordValue}::${SALT}`;
-}
-
-function showError(message) {
-  errorBox.textContent = message;
-  errorBox.classList.remove('success');
-  errorBox.hidden = false;
-}
-
-function showSuccess(message) {
-  errorBox.textContent = message;
-  errorBox.classList.add('success');
-  errorBox.hidden = false;
-}
-
-function clearMessage() {
-  errorBox.textContent = '';
-  errorBox.hidden = true;
-  errorBox.classList.remove('success');
-}
-
-function fallbackCopy(textarea) {
-  textarea.focus();
-  textarea.select();
-  try {
-    return document.execCommand('copy');
-  } catch (error) {
-    return false;
-  }
-}
-
-function formatDate(date) {
-  return date.toLocaleDateString('ru-RU', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-  });
-}
-
-setMode('encrypt');
+})
+  .component('HeroWidget', HeroWidget)
+  .component('PlantWidget', PlantWidget)
+  .component('TextWidget', TextWidget)
+  .component('ImageWidget', ImageWidget)
+  .mount('#app');

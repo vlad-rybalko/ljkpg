@@ -2,17 +2,122 @@
 <html lang="ru">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
-    <link rel="stylesheet" href="./style.css" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Клиентский шифратор фраз</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <title>Page Builder Admin</title>
+    <link rel="stylesheet" href="style.css" />
   </head>
   <body>
-    <div id="app"></div>
-    <script src="./crypto-js.min.js"></script>
-    <script type="module" src="./main.js"></script>
+    <div id="app">
+      <div class="app">
+        <header class="app__header">
+          <div>
+            <p class="app__eyebrow">Конструктор статичных страниц</p>
+            <h1>Page Builder Admin</h1>
+            <p class="app__subtitle">
+              Сетка 12 колонок. Настраивайте ширину блоков (span) и получайте JSON для
+              отрисовки виджетов на клиенте.
+            </p>
+          </div>
+          <div class="app__actions">
+            <button class="primary" @click="addRow">Добавить строку</button>
+            <button class="ghost" @click="resetLayout">Сбросить</button>
+          </div>
+        </header>
+
+        <main class="app__main">
+          <aside class="panel">
+            <section>
+              <h2>Блоки (Tilda-style)</h2>
+              <ul class="widget-list">
+                <li v-for="widget in widgetCatalog" :key="widget.type">
+                  <div>
+                    <strong>{{ widget.label }}</strong>
+                    <p>{{ widget.description }}</p>
+                  </div>
+                  <span class="tag">{{ widget.type }}</span>
+                </li>
+              </ul>
+            </section>
+
+            <section>
+              <h2>JSON</h2>
+              <pre class="json-preview">{{ jsonOutput }}</pre>
+            </section>
+          </aside>
+
+          <section class="canvas">
+            <div v-if="!rows.length" class="empty-state">
+              <h3>Начните с добавления строки</h3>
+              <p>Нажмите «Добавить строку», чтобы создать структуру страницы.</p>
+            </div>
+
+            <article v-for="row in rows" :key="row.id" class="row">
+              <header class="row__header">
+                <div>
+                  <h3>Строка {{ row.order }}</h3>
+                  <p>Блоков: {{ row.columns.length }}</p>
+                </div>
+                <div class="row__actions">
+                  <button class="ghost" @click="addColumn(row)">Добавить блок</button>
+                  <button class="danger" @click="removeRow(row.id)">Удалить строку</button>
+                </div>
+              </header>
+
+              <div class="row__grid">
+                <div
+                  v-for="column in row.columns"
+                  :key="column.id"
+                  class="column"
+                  :style="columnStyle(column)"
+                >
+                  <header class="column__header">
+                    <h4>Блок {{ column.order }}</h4>
+                    <button class="ghost" @click="removeColumn(row, column.id)">
+                      Удалить
+                    </button>
+                  </header>
+
+                  <div class="column__controls">
+                    <label class="field">
+                      <span>Ширина</span>
+                      <select v-model.number="column.span">
+                        <option v-for="span in spanOptions" :key="span" :value="span">
+                          {{ span }}/12
+                        </option>
+                      </select>
+                    </label>
+                    <label class="field">
+                      <span>Блок</span>
+                      <select v-model="column.selectedWidget">
+                        <option disabled value="">Выберите блок</option>
+                        <option v-for="widget in widgetCatalog" :key="widget.type" :value="widget.type">
+                          {{ widget.label }}
+                        </option>
+                      </select>
+                    </label>
+                    <button class="primary" @click="addWidget(column)">Добавить</button>
+                  </div>
+
+                  <div class="column__widgets">
+                    <div v-if="!column.widgets.length" class="column__empty">
+                      Нет блоков. Добавьте первый элемент.
+                    </div>
+                    <div v-for="widget in column.widgets" :key="widget.id" class="widget-wrapper">
+                      <component :is="widget.component" v-bind="widget.props"></component>
+                      <button class="ghost" @click="removeWidget(column, widget.id)">
+                        Удалить
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </article>
+          </section>
+        </main>
+      </div>
+    </div>
+
+    <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+    <script type="module" src="main.js"></script>
   </body>
 </html>
