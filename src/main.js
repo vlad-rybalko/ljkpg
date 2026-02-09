@@ -1,347 +1,387 @@
-const TARGET_PRESETS = [
-  { label: '480p', width: 480 },
-  { label: '720p', width: 720 },
-  { label: '1080p', width: 1080 },
+import './style.css';
+
+const app = document.getElementById('app');
+
+const widgetCatalog = [
+  {
+    type: 'hero',
+    label: 'Hero-блок',
+    description: 'Крупный заголовок, подзаголовок и CTA.',
+  },
+  {
+    type: 'cards',
+    label: 'Карточки',
+    description: 'Сетка из карточек с преимуществами.',
+  },
+  {
+    type: 'product',
+    label: 'Информация о товаре',
+    description: 'Фото, свойства, стоимость и кнопка.',
+  },
+  {
+    type: 'text',
+    label: 'Текст + заголовок',
+    description: 'Блок с текстом и лидом.',
+  },
+  {
+    type: 'spacer',
+    label: 'Фиксированная высота',
+    description: 'Отступ между блоками.',
+  },
 ];
 
 const state = {
-  items: [],
-  quality: 0.82,
+  rows: [],
+  selectedRowId: null,
+  selectedColumnId: null,
 };
 
-const app = document.getElementById('app');
 app.innerHTML = `
-  <header>
-    <h1>WebP Image Optimizer</h1>
-    <p class="subtitle">
-      Загрузите изображения любого распространенного формата, и сервис сожмёт их, оптимизирует и подготовит версии 480p, 720p и 1080p в формате WebP прямо в браузере.
-    </p>
-  </header>
-  <section class="upload-card">
-    <div id="dropzone" class="dropzone" role="button" tabindex="0" aria-label="Загрузить изображения">
-      <h2>Перетащите файлы сюда</h2>
-      <p>Поддерживаются JPG, PNG, HEIC, BMP и другие форматы. Максимальный размер ограничен возможностями браузера.</p>
-      <button id="pickFiles" class="primary">
-        <span class="icon">⬆️</span>
-        Выбрать изображения
-      </button>
-      <input id="fileInput" type="file" accept="image/*" multiple />
-    </div>
-    <div class="controls">
-      <div class="quality-control">
-        <label for="quality">Качество WebP:</label>
-        <input type="range" id="quality" min="0.4" max="1" step="0.01" value="${state.quality}" />
-        <span id="qualityValue">${Math.round(state.quality * 100)}%</span>
+  <div class="page">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Демо конструктора страниц</p>
+        <h1>Соберите страницу из строк, колонок и виджетов</h1>
+        <p class="subtitle">
+          Добавляйте строки, делите их на колонки и наполняйте виджетами. Всё работает локально и
+          сразу показывает результат.
+        </p>
       </div>
-      <div id="progress" class="progress" hidden>
-        <span class="spinner" aria-hidden="true"></span>
-        <span id="progressText">Обработка…</span>
+      <div class="topbar-actions">
+        <button id="seedLayout" class="ghost">Сбросить в демо-макет</button>
+        <button id="clearLayout" class="danger">Очистить всё</button>
       </div>
-    </div>
-  </section>
-  <section id="results" class="results" aria-live="polite"></section>
-  <div class="actions">
-    <button id="clear" type="button" hidden>Очистить все</button>
+    </header>
+
+    <section class="builder">
+      <aside class="panel">
+        <div class="panel-section">
+          <h2>Структура страницы</h2>
+          <p class="hint">Выберите строку или колонку прямо в макете и добавляйте элементы.</p>
+          <div class="controls">
+            <button id="addRow" class="primary">+ Добавить строку</button>
+            <button id="addColumn" class="secondary">+ Добавить колонку</button>
+          </div>
+          <div class="selection" id="selectionInfo"></div>
+        </div>
+
+        <div class="panel-section">
+          <h2>Виджеты</h2>
+          <p class="hint">Виджеты добавляются в выбранную колонку.</p>
+          <div class="widget-list" id="widgetList"></div>
+        </div>
+
+        <div class="panel-section tips">
+          <h3>Советы</h3>
+          <ul>
+            <li>На мобильном превью автоматически перестраивается в одну колонку.</li>
+            <li>Можно создавать разные комбинации колонок в каждой строке.</li>
+            <li>Каждый виджет — отдельный блок контента.</li>
+          </ul>
+        </div>
+      </aside>
+
+      <main class="canvas" id="canvas">
+        <div class="canvas-empty">
+          <h3>Начните с добавления строки</h3>
+          <p>Используйте кнопки слева, чтобы собрать страницу из блоков.</p>
+        </div>
+      </main>
+    </section>
   </div>
 `;
 
-const dropzone = document.getElementById('dropzone');
-const fileInput = document.getElementById('fileInput');
-const pickFiles = document.getElementById('pickFiles');
-const results = document.getElementById('results');
-const qualityInput = document.getElementById('quality');
-const qualityValue = document.getElementById('qualityValue');
-const clearButton = document.getElementById('clear');
-const progress = document.getElementById('progress');
-const progressText = document.getElementById('progressText');
+const addRowButton = document.getElementById('addRow');
+const addColumnButton = document.getElementById('addColumn');
+const selectionInfo = document.getElementById('selectionInfo');
+const widgetList = document.getElementById('widgetList');
+const canvas = document.getElementById('canvas');
+const seedLayoutButton = document.getElementById('seedLayout');
+const clearLayoutButton = document.getElementById('clearLayout');
 
-pickFiles.addEventListener('click', () => fileInput.click());
+widgetList.innerHTML = widgetCatalog
+  .map(
+    (widget) => `
+      <button class="widget-card" type="button" data-widget="${widget.type}">
+        <strong>${widget.label}</strong>
+        <span>${widget.description}</span>
+      </button>
+    `,
+  )
+  .join('');
 
-fileInput.addEventListener('change', (event) => {
-  const files = Array.from(event.target.files ?? []).filter(isSupportedFile);
-  if (files.length) {
-    handleFiles(files);
+addRowButton.addEventListener('click', () => {
+  const row = createRow();
+  state.rows.push(row);
+  selectRow(row.id);
+  selectColumn(row.columns[0].id);
+  render();
+});
+
+addColumnButton.addEventListener('click', () => {
+  const row = findRow(state.selectedRowId) || state.rows[state.rows.length - 1];
+  if (!row) {
+    addRowButton.click();
+    return;
   }
-  fileInput.value = '';
+  const column = createColumn();
+  row.columns.push(column);
+  selectRow(row.id);
+  selectColumn(column.id);
+  render();
 });
 
-dropzone.addEventListener('dragover', (event) => {
-  event.preventDefault();
-  dropzone.classList.add('dragover');
+widgetList.addEventListener('click', (event) => {
+  const button = event.target.closest('[data-widget]');
+  if (!button) return;
+  const type = button.dataset.widget;
+  const column = findColumn(state.selectedColumnId);
+  if (!column) {
+    flashSelection('Сначала выберите колонку.');
+    return;
+  }
+  column.widgets.push(createWidget(type));
+  render();
 });
 
-dropzone.addEventListener('dragleave', () => {
-  dropzone.classList.remove('dragover');
+seedLayoutButton.addEventListener('click', () => {
+  seedDemoLayout();
+  render();
 });
 
-dropzone.addEventListener('drop', (event) => {
-  event.preventDefault();
-  dropzone.classList.remove('dragover');
-  const files = Array.from(event.dataTransfer?.files ?? []).filter(isSupportedFile);
-  if (files.length) {
-    handleFiles(files);
+clearLayoutButton.addEventListener('click', () => {
+  state.rows = [];
+  state.selectedRowId = null;
+  state.selectedColumnId = null;
+  render();
+});
+
+canvas.addEventListener('click', (event) => {
+  const columnEl = event.target.closest('[data-column-id]');
+  const rowEl = event.target.closest('[data-row-id]');
+  if (columnEl) {
+    selectColumn(columnEl.dataset.columnId);
+    selectRow(columnEl.dataset.rowId);
+    render();
+    return;
+  }
+  if (rowEl) {
+    selectRow(rowEl.dataset.rowId);
+    state.selectedColumnId = null;
+    render();
   }
 });
 
-dropzone.addEventListener('keydown', (event) => {
-  if (event.key === 'Enter' || event.key === ' ') {
-    event.preventDefault();
-    fileInput.click();
-  }
-});
-
-qualityInput.addEventListener('input', (event) => {
-  const value = Number(event.target.value);
-  state.quality = value;
-  qualityValue.textContent = `${Math.round(value * 100)}%`;
-});
-
-clearButton.addEventListener('click', () => {
-  state.items = [];
-  results.innerHTML = '';
-  clearButton.hidden = true;
-});
-
-async function handleFiles(files) {
-  toggleProgress(true, `Обработка ${files.length} ${decline(files.length, 'файл', 'файла', 'файлов')}…`);
-
-  for (const file of files) {
-    const card = createPendingCard(file);
-    results.prepend(card.element);
-    state.items.unshift(card);
-
-    try {
-      const processed = await processImage(file, state.quality);
-      card.resolve(processed);
-    } catch (error) {
-      console.error(error);
-      card.reject(error);
-    }
-  }
-
-  toggleProgress(false);
-  clearButton.hidden = state.items.length === 0;
+function render() {
+  renderSelection();
+  renderCanvas();
 }
 
-function toggleProgress(show, message = '') {
-  progress.hidden = !show;
-  if (message) {
-    progressText.textContent = message;
-  }
-}
+function renderSelection() {
+  const row = findRow(state.selectedRowId);
+  const column = findColumn(state.selectedColumnId);
+  const rowInfo = row
+    ? `Выбрана строка: <strong>${row.label}</strong>`
+    : 'Строка не выбрана';
+  const columnInfo = column
+    ? `Выбрана колонка: <strong>${column.label}</strong>`
+    : 'Колонка не выбрана';
 
-function createPendingCard(file) {
-  const element = document.createElement('article');
-  element.className = 'card';
-  element.innerHTML = `
-    <div class="card-header">
-      <h3>${escapeHtml(file.name)}</h3>
-      <span class="status">Ожидает обработки…</span>
-    </div>
-    <div class="empty-state">Подготовка изображения</div>
+  selectionInfo.innerHTML = `
+    <div class="selection-row">${rowInfo}</div>
+    <div class="selection-row">${columnInfo}</div>
   `;
+}
 
-  const status = element.querySelector('.status');
-  const emptyState = element.querySelector('.empty-state');
+function renderCanvas() {
+  if (state.rows.length === 0) {
+    canvas.innerHTML = `
+      <div class="canvas-empty">
+        <h3>Начните с добавления строки</h3>
+        <p>Используйте кнопки слева, чтобы собрать страницу из блоков.</p>
+      </div>
+    `;
+    return;
+  }
 
+  canvas.innerHTML = state.rows
+    .map((row) => {
+      const isRowSelected = row.id === state.selectedRowId;
+      return `
+        <section class="row ${isRowSelected ? 'selected' : ''}" data-row-id="${row.id}" style="--cols: ${row.columns.length}">
+          <div class="row-header">
+            <span>${row.label}</span>
+            <span>${row.columns.length} ${decline(row.columns.length, 'колонка', 'колонки', 'колонок')}</span>
+          </div>
+          <div class="row-columns">
+            ${row.columns
+              .map((column) => {
+                const isColSelected = column.id === state.selectedColumnId;
+                return `
+                  <div
+                    class="column ${isColSelected ? 'selected' : ''}"
+                    data-row-id="${row.id}"
+                    data-column-id="${column.id}"
+                  >
+                    <div class="column-header">${column.label}</div>
+                    <div class="column-body">
+                      ${column.widgets.length ? column.widgets.map(renderWidget).join('') : renderEmptyColumn()}
+                    </div>
+                  </div>
+                `;
+              })
+              .join('')}
+          </div>
+        </section>
+      `;
+    })
+    .join('');
+}
+
+function renderWidget(widget) {
+  const templates = {
+    hero: `
+      <div class="widget hero">
+        <p class="badge">Hero</p>
+        <h3>Новая коллекция 2024</h3>
+        <p>Короткое описание вашего предложения: ценность, выгода, CTA.</p>
+        <button class="primary">Смотреть каталог</button>
+      </div>
+    `,
+    cards: `
+      <div class="widget cards">
+        <div class="card">
+          <h4>Быстрый запуск</h4>
+          <p>Готовые блоки и стили для старта проекта.</p>
+        </div>
+        <div class="card">
+          <h4>Гибкая сетка</h4>
+          <p>Комбинируйте колонки под любой сценарий.</p>
+        </div>
+        <div class="card">
+          <h4>Адаптивность</h4>
+          <p>Макет автоматически подстраивается под мобайл.</p>
+        </div>
+      </div>
+    `,
+    product: `
+      <div class="widget product">
+        <div class="product-media"></div>
+        <div class="product-info">
+          <h4>Smart Speaker Pro</h4>
+          <p>Глубокий звук, управление жестами и умный режим.</p>
+          <ul>
+            <li>Bluetooth 5.3</li>
+            <li>12 часов автономности</li>
+            <li>3 цвета корпуса</li>
+          </ul>
+          <div class="price-row">
+            <span class="price">12 990 ₽</span>
+            <button class="primary">Добавить в корзину</button>
+          </div>
+        </div>
+      </div>
+    `,
+    text: `
+      <div class="widget text">
+        <h4>О сервисе</h4>
+        <p>
+          Это демо конструктора страниц. Заполните блоки реальным контентом, добавьте новые разделы и
+          получите готовую структуру лендинга.
+        </p>
+      </div>
+    `,
+    spacer: `
+      <div class="widget spacer">
+        <span>Фиксированная высота 80px</span>
+      </div>
+    `,
+  };
+
+  return templates[widget.type] ?? templates.text;
+}
+
+function renderEmptyColumn() {
+  return `
+    <div class="column-empty">
+      <p>Пустая колонка</p>
+      <span>Добавьте виджет слева</span>
+    </div>
+  `;
+}
+
+function createRow() {
   return {
-    element,
-    resolve(processed) {
-      status.textContent = `Готово · исходный размер ${formatBytes(file.size)}`;
-      const preview = createPreview(processed.previewUrl);
-      const variants = document.createElement('div');
-      variants.className = 'variant-list';
-
-      for (const variant of processed.variants) {
-        variants.appendChild(createVariantRow(variant));
-      }
-
-      const wrapper = document.createElement('div');
-      wrapper.className = 'preview-wrapper';
-      wrapper.append(preview, variants);
-
-      emptyState.replaceWith(wrapper);
-    },
-    reject(error) {
-      status.textContent = 'Ошибка обработки';
-      emptyState.innerHTML = `<p>Не удалось обработать изображение. ${escapeHtml(error.message ?? 'Попробуйте другое изображение.')}</p>`;
-    },
+    id: generateId(),
+    label: `Строка ${state.rows.length + 1}`,
+    columns: [createColumn(), createColumn()],
   };
 }
 
-function createPreview(url) {
-  const wrapper = document.createElement('div');
-  wrapper.className = 'preview';
-  const img = document.createElement('img');
-  img.src = url;
-  img.alt = 'Превью обработанного изображения';
-  wrapper.appendChild(img);
-  return wrapper;
-}
-
-function createVariantRow(variant) {
-  const row = document.createElement('div');
-  row.className = 'variant';
-
-  const info = document.createElement('div');
-  info.className = 'variant-info';
-  const title = document.createElement('strong');
-  title.textContent = `${variant.label} · ${variant.width}×${variant.height}`;
-  const subtitle = document.createElement('span');
-  subtitle.textContent = `~${formatBytes(variant.size)} · экономия ${variant.savings}%`;
-  info.append(title, subtitle);
-
-  const button = document.createElement('button');
-  button.type = 'button';
-  button.textContent = 'Скачать';
-  button.addEventListener('click', () => downloadBlob(variant.blob, variant.fileName));
-
-  row.append(info, button);
-  return row;
-}
-
-async function processImage(file, quality) {
-  const imageBitmap = await loadImageBitmap(file);
-  const previewUrl = await fileToDataUrl(file);
-  const variants = [];
-
-  for (const preset of TARGET_PRESETS) {
-    const { blob, width, height } = await renderVariant(imageBitmap, preset.width, quality);
-    const fileName = buildFileName(file.name, preset.label);
-    const size = blob.size;
-    const savings = file.size
-      ? Math.max(0, Math.round((1 - size / file.size) * 100))
-      : 0;
-
-    variants.push({
-      label: preset.label,
-      width,
-      height,
-      blob,
-      fileName,
-      size,
-      savings,
-    });
-  }
-
-  imageBitmap.close?.();
-
+function createColumn() {
+  const index = state.rows.flatMap((row) => row.columns).length + 1;
   return {
-    previewUrl,
-    variants,
+    id: generateId(),
+    label: `Колонка ${index}`,
+    widgets: [],
   };
 }
 
-async function renderVariant(imageBitmap, targetWidth, quality) {
-  const originalWidth = imageBitmap.width || targetWidth;
-  const width = Math.max(1, Math.min(targetWidth, originalWidth));
-  const scale = width / originalWidth;
-  const originalHeight = imageBitmap.height || Math.round(targetWidth * 0.75);
-  const height = Math.max(1, Math.round(originalHeight * scale));
+function createWidget(type) {
+  return {
+    id: generateId(),
+    type,
+  };
+}
 
-  const canvas = document.createElement('canvas');
-  canvas.width = width;
-  canvas.height = height;
-  const context = canvas.getContext('2d');
-  if (!context) {
-    throw new Error('Не удалось создать контекст рисования.');
+function selectRow(id) {
+  state.selectedRowId = id;
+}
+
+function selectColumn(id) {
+  state.selectedColumnId = id;
+}
+
+function findRow(id) {
+  return state.rows.find((row) => row.id === id) ?? null;
+}
+
+function findColumn(id) {
+  for (const row of state.rows) {
+    const column = row.columns.find((col) => col.id === id);
+    if (column) return column;
   }
-  context.imageSmoothingEnabled = true;
-  context.imageSmoothingQuality = 'high';
-  context.drawImage(imageBitmap, 0, 0, width, height);
-
-  const blob = await new Promise((resolve, reject) => {
-    canvas.toBlob(
-      (result) => {
-        if (!result) {
-          reject(new Error('Браузер не поддерживает экспорт в WebP.'));
-          return;
-        }
-        resolve(result);
-      },
-      'image/webp',
-      quality,
-    );
-  });
-
-  return { blob, width, height };
+  return null;
 }
 
-async function loadImageBitmap(file) {
-  if ('createImageBitmap' in window) {
-    try {
-      return await createImageBitmap(file, { imageOrientation: 'from-image' });
-    } catch (error) {
-      console.warn('createImageBitmap не удался, fallback на Image', error);
-    }
-  }
-
-  const url = await fileToDataUrl(file);
-  return await loadImageElement(url);
+function flashSelection(message) {
+  selectionInfo.innerHTML = `<div class="selection-row warning">${message}</div>`;
+  window.setTimeout(renderSelection, 1200);
 }
 
-function loadImageElement(src) {
-  return new Promise((resolve, reject) => {
-    const image = new Image();
-    image.decoding = 'async';
-    image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error('Не удалось загрузить изображение.'));
-    image.src = src;
-  });
+function seedDemoLayout() {
+  state.rows = [];
+  const row1 = createRow();
+  row1.columns[0].widgets.push(createWidget('hero'));
+  row1.columns[1].widgets.push(createWidget('text'));
+
+  const row2 = createRow();
+  row2.columns = [createColumn()];
+  row2.columns[0].widgets.push(createWidget('cards'));
+
+  const row3 = createRow();
+  row3.columns = [createColumn(), createColumn()];
+  row3.columns[0].widgets.push(createWidget('product'));
+  row3.columns[1].widgets.push(createWidget('spacer'));
+  row3.columns[1].widgets.push(createWidget('text'));
+
+  state.rows.push(row1, row2, row3);
+  selectRow(row1.id);
+  selectColumn(row1.columns[0].id);
 }
 
-function fileToDataUrl(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = () => reject(new Error('Ошибка чтения файла.'));
-    reader.readAsDataURL(file);
-  });
-}
-
-function downloadBlob(blob, fileName) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = fileName;
-  document.body.appendChild(a);
-  a.click();
-  setTimeout(() => {
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  }, 0);
-}
-
-function formatBytes(bytes) {
-  if (!Number.isFinite(bytes) || bytes <= 0) return '0 Б';
-  const units = ['Б', 'КБ', 'МБ', 'ГБ'];
-  const exponent = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
-  const value = bytes / 1024 ** exponent;
-  return `${value.toFixed(value < 10 && exponent > 0 ? 1 : 0)} ${units[exponent]}`;
-}
-
-function buildFileName(originalName, presetLabel) {
-  const baseName = originalName.replace(/\.[^.]+$/, '');
-  return `${baseName}_${presetLabel}.webp`;
-}
-
-function escapeHtml(string) {
-  return String(string).replace(/[&<>"']/g, (char) => {
-    switch (char) {
-      case '&':
-        return '&amp;';
-      case '<':
-        return '&lt;';
-      case '>':
-        return '&gt;';
-      case '"':
-        return '&quot;';
-      case "'":
-        return '&#039;';
-      default:
-        return char;
-    }
-  });
+function generateId() {
+  return `id-${Math.random().toString(16).slice(2, 10)}`;
 }
 
 function decline(value, one, few, many) {
@@ -352,7 +392,5 @@ function decline(value, one, few, many) {
   return many;
 }
 
-function isSupportedFile(file) {
-  if (file.type?.startsWith('image/')) return true;
-  return /\.(jpe?g|png|gif|bmp|webp|heic|heif|avif|tiff)$/i.test(file.name ?? '');
-}
+seedDemoLayout();
+render();
